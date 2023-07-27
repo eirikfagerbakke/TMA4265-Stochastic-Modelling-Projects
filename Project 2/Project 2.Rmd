@@ -1,0 +1,837 @@
+---
+title: "Emergency Center Queues, Climate Models and GameStop Stocks - What a Ride!"
+author: "Eirik Fagerbakke and Henrik Grenersen"
+output: pdf_document
+header-includes:
+  - \geometry{top=1in}
+  - \usepackage{titling}
+  - \pretitle{\begin{flushleft}\Huge\bfseries}
+  - \posttitle{\end{flushleft}}  
+  - \preauthor{\begin{flushleft}\Large}
+  - \postauthor{\end{flushleft}}  
+  - \predate{\begin{flushleft}\large}
+  - \postdate{\end{flushleft}}
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(fig.width=8, fig.height=3)
+#install.packages("ggplot2")
+#install.packages("reshape2")
+#install.packages("ggthemes")
+#install.packages("rlang")
+library(ggthemes)
+library(ggplot2)
+library(reshape2)
+set.seed(888)
+```
+
+# Problem 1
+
+**a)**
+
+To have an M/M/1 queue, we need to have three conditions fulfilled:
+
+```{=tex}
+\begin{enumerate}
+\item interarrival times are iid exponentially distributed (memoryless)
+\item service times are iid exponentially distributed (memoryless)
+\item there is only one server, and the service times are independent of the arrival process.
+\end{enumerate}
+```
+This is satisfied in problem 1, as the arrival of patients follow a
+Poisson process with rate $\lambda$, meaning that the interarrival times
+must be iid $Exp (\lambda)$, with mean $1/\lambda$. The treatment times
+of the patients are also iid exponentially distributed, with mean
+$1/\mu$. Finally, we only treat one patient at a time. The UUC is
+therefore an M/M/1 queue.
+
+$X(t)$ determines the amount of patients in the system at time $t$,
+which can only increase or decrease by one in a short interval, and the
+change in $X(t)$ is proportional to $t$.
+
+We have the following rates:
+
+$$
+\text{Birth rate: } \quad \lambda_i = \lambda, \qquad i=0,1,\ldots
+$$ $$
+\text{Death rate: } \quad \mu_0 = 0 \qquad \mu_i = \mu, \qquad i=1,2,\ldots
+$$ since we only have one server.
+
+To find the average time a patient will spend in the UCC, we can use
+Little's law. In order to do this however, we would first need to
+determine the expected number of patients, $L$. In order to do this we
+can first determine the limiting distribution of the number of patients
+in the UCC. We firstly make use of the following relation for the
+limiting distribution $$
+\pi _k = \frac{\theta_k}{\sum_{i=0}^\infty \theta_i},  \quad k=0, 1,  \ldots \\ 
+$$ $$
+\quad \theta_0 =1, \quad \theta_l = \prod_{i=1}^{l}\frac{\lambda_{i-1}}{\mu_i}, \quad l=1, 2, \ldots
+$$ In our case, since all birth rates are equal, and all death rates are
+equal, we then get that $$
+\theta_0 = 1, \quad \theta_l =\frac{\lambda^l}{\mu^l} 
+$$ Now we can evaluate the sum of the $\theta$s as $$
+\sum_{k=0}^{\infty}\left( \frac{\lambda}{\mu} \right) ^l = \begin{cases} 
+\frac{1}{1-\lambda/\mu}, \quad & \lambda<\mu \\
+\infty, \quad & \text{else}
+\end{cases}
+$$ Since we assume that $\lambda < \mu$, we can then determine our
+limiting probabilities as $$
+\pi _k = \left( \frac{\lambda}{\mu} \right) ^k \left( 1-\frac{\lambda}{\mu}\right), \quad k=0, 1, 2, \ldots
+$$ We recognize this as the pdf of a geometric distribution, except for
+the fact that the indices begin at $0$ instead of 1. We can work our way
+around this small problem by instead considering $$
+X(t)+1 \sim \text{Geom}\left( 1-\frac{\lambda}{\mu} \right)
+$$
+
+Meaning that we can determine the expected number of patients in the UCC
+as $$
+\underline{L} = E[X(t)] = E[X(t)+1-1] = E[X(t)+1] - 1 =\frac{1}{1-\frac{\lambda}{\mu}} -1=\underline{\frac{\lambda}{\mu - \lambda}} 
+$$
+
+We then get that the average time spent in the UCC is $$
+\underline{W}=\frac{L}{\lambda} = \underline{\frac{1}{\mu-\lambda}}
+$$ **b)** Now we wish to simulate the queue for $\lambda=5$ per hour and
+$\mu = 0.1$ per minute, and wish to estimate the expected time a patient
+will spend in the UCC. Below, one realization for the queue is plotted,
+and a table which contains a CI for the expected time is presented.
+
+```{r}
+lambda = 5 #per hour
+mu = 1/10*60 #per hour
+days = 50
+hours = days*24
+B = 30 #number of simulations
+
+Ws = vector(mode = 'numeric', length = B)
+
+simUCC <- function(lambda, mu, hours) {
+  time = rexp(1, lambda)
+  #first column is state, second column is time, third column is sojourn time
+  x = matrix(c(0, time, time), ncol=3, nrow=1) #X(0) = 0
+  
+  while (time < hours) {
+    state = x[dim(x)[1],1]
+    
+    if (state == 0) {#we can only increase number of patients
+      sojourn_time = rexp(1, lambda)
+      time = time + sojourn_time
+      x = rbind(x, c(1, time, sojourn_time))
+      next
+    }
+    
+    if (runif(1) < lambda/(lambda+mu)) { #jump i->i+1 
+      state = state+1
+    } else { #jump i->i-1
+      state = state-1
+    }
+    
+    sojourn_time = rexp(1, mu + lambda)
+    time = time + sojourn_time
+    x = rbind(x, c(state, time, sojourn_time))
+  }
+  L = sum(x[,1]*x[,3]/time) #state * proportion of time spent in that state
+  W = L/lambda #Little's law
+  results <- list(x, W)
+  return(results)
+}
+
+for (b in 1:B) {
+  W<- simUCC(lambda, mu, hours)[[2]]
+  Ws[b] = W
+}
+
+#CI for W
+
+W_t_test <- t.test(Ws, conf.level = 0.95)
+W_estimate <- W_t_test$estimate
+W_CI <- W_t_test$conf.int
+
+W_theoretical <- 1/(mu-lambda)
+
+#Plotting one realization for 12 hours
+
+result <- as.matrix(simUCC(lambda, mu, hours)[[1]])
+result <- result[result[,2] <= 12,,drop=FALSE]
+tend <- result[, 2]
+x <- result[, 1]
+
+df_UCC <- data.frame(tend,x)
+df_UCC$tstart <- c(0, tend[1:(length(tend)-1)])
+
+ggplot(df_UCC) +
+  geom_linerange(aes(xmin=tstart,xmax=tend,y=x, col = "X"), size = 1)+
+  labs(x = "time [hours]", y = "x(t)", title = "Realization of queing in UCC", col = "") + theme_hc() + scale_colour_hc("darkunica")
+```
+
+From the plot above we see that there's essentially no idle time. This
+is a good sign as a higher idle time would indicate a worse and worse
+use of resources. We also observe that there are some fluctuations
+between 0 and 1, but that we also have peaks as large as `r max(x)`,
+where the time in the queue increases as well.
+
+```{=tex}
+\begin{table}[h!]
+\centering
+\begin{tabular}{ |c|c|c|c|c| } 
+\hline
+& Lower bound & Upper bound & Estimate & Theoretical\\
+\hline
+W &`r format(W_CI[1], digits=4)` & `r format(W_CI[2], digits=4)` & `r format(W_estimate, digits=4)` & `r format(W_theoretical, digits=4)`\\
+\hline
+
+\end{tabular}
+\end{table}
+```
+Regarding our C.I., we have chosen to use the function `t.test(x, y)`,
+because we do not know $\text{Var}[W]$ and want a C.I. for $E[W]$. We
+also note that our theoretical value lies within this interval, which it
+should do in $95 \%$ of the realizations.
+
+**c)**
+
+We now want to consider a somewhat more realistic model for the UCC, in
+which patients will now be classified as "urgent" or "non-urgent". The
+probability that a patient that arrives is urgent is $0 < p < 1$, and we
+denote the number of urgent and normal patients in the UCC at time t by
+$U(t)$ and $N(t)$ respectively. This will affect our system in the
+following way: urgent patients that arrive are immediately treated,
+while non-urgent patients are pushed behind this patient in the queue.
+This illustrates an interesting property of the process
+$\{U(t):t \geq 0\}$, as the urgent patients will form a queue among
+themselves, ignoring the non-urgent patients.
+
+Now, since we still only have 1 "server", and the treatments are
+exponentially distributed as before, this would be a M/M/1 queue, if we
+could verify that the arrival times of urgent patients are exponentially
+distributed as well. Since we know that the arrival of patients is in
+general $\sim \text{Exp}(\lambda)$, we only need to account for the
+probability of a patient being urgent. Therefore, the arrival of urgent
+patients $\sim \text{Exp}(p\lambda)$, and the process is a M/M/1 queue.
+
+Analogous to our situation to 1a) we can now actually determine the
+long-run mean number of urgent patients in the UCC, because we here also
+have that $p\lambda < \mu$, as $p < 1$, $$
+\underline{L_U = \frac{p\lambda}{\mu-p\lambda}}
+$$
+
+**d)** For the process $\{N(t) : t \geq 0\}$ we still have that two of
+the demands for a stochastic process to be an M/M/1 queue are met.
+Demand 1, regarding the arrival times of patients, and demand 3, the
+number of servers is still 1, are both met. However, the treatment times
+are now distributed differently, as a normal patient might receive
+treatment, and then have it cancelled, because of the arrival of an
+urgent patient. Say, for instance that $U(t)=1, N(t)=0$ at some time
+$t$, and one normal patient arrives, increasing $N(t)$ to $1$. In a
+M/M/1 queue this normal patient would have been treated immediately, but
+now the service time depends on the number of urgent patients, as well
+as the time needed to treat these patients.
+
+In order to determine the long-run mean number of patients in the UCC,
+we can now make use of the fact that $$
+X(t) = U(t) + N(t)
+$$ This means that $$
+E[N(t)] = E[X(t)] - E[U(t)] = L_X - L_U = \frac{\lambda}{\mu-\lambda} - \frac{p\lambda}{\mu - p\lambda}
+$$ $$
+\underline{L_N} = \frac{\lambda(\mu-p\lambda)-p\lambda(\mu-\lambda)}{(\mu-\lambda)(\mu-p\lambda)} = \underline{\frac{\mu\lambda(1-p)}{(\mu-\lambda)(\mu-p\lambda)}}
+$$ **e)** Since we have already found expressions for $L_U$ and $L_N$,
+we can use Little's law to decide the total time spent in the system for
+patients of both types. We first need to determine the arrival rate of
+normal patients, but since $$
+\lambda_X = \lambda_U + \lambda_N
+$$
+
+We get that $$
+\lambda_N = \lambda(1-p)
+$$
+
+This could of course also be seen from the fact that on average, a
+proportion $1-p$ of the arriving patients will be normal, analogous to
+the case for $\lambda_U$. We then get the following expression for the
+times spent in the system $$
+W_U = \frac{1}{\mu-p\lambda}
+$$ $$
+W_N = \frac{\mu}{(\mu-\lambda)(\mu-p\lambda)}
+$$ **f)**
+
+Using the same parameters as earlier, we now wish to plot the above
+expressions as functions of $p$, and also compare them to the case with
+only normal patients, shown as the dashed line $W$.
+
+```{r}
+lambda <- 5 #per hour
+mu <- 1/10*60 #per hour
+num_of_points <- 1000
+p <- seq(from=0, to=1, length=num_of_points)[2:(num_of_points - 1)]
+
+W_U = 1/(mu - p*lambda)
+W_N = mu/((mu-lambda)*(mu-p*lambda))
+
+df_W <- data.frame(p, W_U, W_N)
+
+ggplot(df_W, aes(p)) + 
+  geom_line(aes(y=W_U, col = "W_U")) + 
+  geom_line(aes(y=W_N, col="W_N")) +
+  geom_line(aes(y=1/(mu-lambda), col = "W"), linetype="dashed")+
+  labs(x="p", y = "Time in system", title="Theoretical times spent in UCC", col = "") + theme_hc() + scale_colour_hc("darkunica")
+```
+
+When $p \approx 0$ we see that $W_N \to W$, and this makes sense, as the
+proportion of urgent patients is almost zero, meaning that we have a
+queue similar to our initial case. For $p \approx 1$ we see that
+$W_U \to W$, which is again logical, as almost every patient that
+arrives is urgent, and they will have to wait as patients would in our
+situation described in a). In the unlikely event that a normal patient
+arrives in this case, they would have to wait for a longer amount of
+time, as there are probably many urgent patients in the UCC.
+
+Now we want to consider in more detail the expected time spent at the
+UCC for a normal patient in the extreme cases $p \approx 0$ and
+$p \approx 1$, which by inserting these values gives us the expressions
+$$
+W_{N}(p=0) = \frac{1}{\mu-\lambda}, \quad W_N(p=1)=\frac{\mu}{(\mu-\lambda)^2}
+$$ We have already covered the case where $p\approx 0$, but for
+$p\approx1$, we see that the expected time spent in the UCC is finite.
+We are also interested in finding the $p$ for which $W_N(p)=2$. That is,
+solve the equation $$
+\frac{\mu}{(\mu-\lambda)(\mu-p\lambda)} = 2
+$$ $$
+\mu-p\lambda = \frac{\mu}{2(\mu-\lambda)}
+$$ $$
+\underline{p} = \frac{2\mu(\mu-\lambda)-\mu}{2\lambda(\mu-\lambda)} = \frac{2*6(6-5)-6}{2*3*(6-5)}=\underline{\frac{3}{5}}
+$$
+
+**g)**
+
+Now we want to simulate the queues we have worked with analytically
+until now.
+
+```{r}
+lambda <- 5 #per hour
+mu <- 1/10*60 #per hour
+
+p <- 0.80
+
+simUCC_realistic <- function(lambda, mu, p, hours) {
+  time = rexp(1, lambda)
+  #first column is state, second column is time, third column is sojourn time
+  X = matrix(c(0, time, time), ncol=3, nrow=1) #X(0) = 0
+  U = matrix(c(0, time, time), ncol=3, nrow=1)
+  N = matrix(c(0, time, time), ncol=3, nrow=1)
+  num_of_patients = 1
+  while (time < hours) {
+    state_X = X[dim(X)[1],1]
+    state_U = U[dim(U)[1],1]
+    state_N = N[dim(N)[1],1]
+    
+    if (state_X == 0) {#we can only increase number of patients
+      sojourn_time = rexp(1, lambda)
+      time = time + sojourn_time
+      X = rbind(X, c(1, time, sojourn_time))
+      if (runif(1)<p) {
+        state_U<-1
+      } else {
+        state_N<-1
+      }
+      U = rbind(U, c(state_U, time, sojourn_time))
+      N = rbind(N, c(state_N, time, sojourn_time))
+      next
+    }
+    
+    if (runif(1) < lambda/(lambda+mu)) { #jump i->i+1 
+      state_X = state_X+1
+      if (runif(1) < p) { #new patient is urgent
+        state_U = state_U+1
+        #state_N = previous_state_N
+      } else { #new patient is normal
+        #state_U = previous_state_U
+        state_N = state_N+1
+      }
+    
+    } else { #jump i->i-1
+      state_X = state_X-1
+      if (state_U==0) {
+        state_N = state_N-1
+      } else {
+        state_U = state_U-1
+      }
+    }
+    
+    sojourn_time = rexp(1, mu + lambda)
+    time = time + sojourn_time
+    X = rbind(X, c(state_X, time, sojourn_time))
+    
+    U = rbind(U, c(state_U, time, sojourn_time))
+    N = rbind(N, c(state_N, time, sojourn_time))
+  }
+  #state * proportion of time spent in that state
+  L_X = sum(X[,1]*X[,3]/time)
+  L_U = sum(U[,1]*U[,3]/time) 
+  L_N = sum(N[,1]*N[,3]/time)
+  
+  #Little's law
+  W_X = L_X/lambda
+  W_U = L_U/(lambda*p)
+  W_N = L_N/((1-p)*lambda)
+  
+  
+  Ws <- c(W_X, W_U, W_N)
+  results <- list(X, U, N, Ws)
+  return(results)
+}
+
+#Finding CIs for W_U and W_N
+
+B <- 30
+Ws = matrix(nrow= B, ncol = 3)
+
+for (b in 1:B) {
+  W <- simUCC_realistic(lambda, mu,p, hours)[[4]]
+  Ws[b,] <- W
+}
+
+W_U_t_test = t.test(Ws[,2], conf.level = 0.95)
+W_N_t_test = t.test(Ws[,3], conf.level = 0.95)
+
+W_U_CI <- W_U_t_test$conf.int
+W_U_estimate <- W_U_t_test$estimate
+
+W_N_CI <- W_N_t_test$conf.int
+W_N_estimate <- W_N_t_test$estimate
+
+W_U_theoretical <- 1/(mu-p*lambda)
+W_N_theoretical <- mu/((mu-lambda)*(mu-p*lambda))
+
+#Plotting one realization for 12 hours
+
+results <- simUCC_realistic(lambda, mu, p, hours)
+X = as.matrix(results[[1]])
+U = as.matrix(results[[2]])
+N = as.matrix(results[[3]])
+
+U <- U[U[,2] <= 12,,drop=FALSE]
+tend <- U[, 2]
+u <- U[, 1]
+
+X <- X[X[,2] <= 12,,drop=FALSE]
+x <- X[, 1]
+
+N <- N[N[,2] <= 12,,drop=FALSE]
+n<- N[, 1]
+
+df_UUC_realistic = data.frame(x, u, n, tend)
+df_UUC_realistic$tstart = c(0, tend[1:(length(tend)-1)])
+
+ggplot(df_UUC_realistic) +
+  geom_linerange(aes(xmin=tstart, xmax=tend, y=x, col = "U+N"), size = 1)+
+  geom_linerange(aes(xmin=tstart, xmax=tend, y=u, col = "U"), size = 1)+
+  geom_linerange(aes(xmin=tstart, xmax=tend, y=n, col = "N"), size = 1)+
+  labs(title = "Simulation of UCC with urgent patients",col = "Patient type", x = "Time [hours]", y = "Patients in UCC") + theme_hc() + scale_colour_hc("darkunica")
+  
+```
+
+From the plot above, we see that normal patients generally spend a
+longer time in the UCC than the urgent patients, as expected. We also
+see that the values for $N$ only decrease when $U=0$, as it should
+according to our model. Now we want to look at the mean times in the
+system, and compare them to the theoretical values discussed earlier.
+
+```{=tex}
+\begin{table}[h!] 
+\centering
+\begin{tabular}{ |c|c|c|c|c| } 
+\hline
+& Lower bound & Upper bound & Estimate & Theoretical\\
+\hline
+$W_U$ &`r format(W_U_CI[1], digits=4)` & `r format(W_U_CI[2], digits=4)` & `r format(W_U_estimate, digits=4)` & `r format(W_U_theoretical, digits=4)`\\
+\hline
+$W_N$ &`r format(W_N_CI[1], digits=4)` & `r format(W_N_CI[2], digits=4)` & `r format(W_N_estimate, digits=4)` & `r format(W_N_theoretical, digits=4)`\\
+\hline
+
+\end{tabular}
+\end{table}
+```
+We see that the expected times from the simulation are very close to the
+theoretical values, but that our numerical values for the CI for $W_U$
+is a bit off, as the theoretical value does not lie within the CI, but
+this is indeed the case for $W_N$.
+
+# Problem 2
+
+In this problem we will investigate the properties of a parameter of a
+climate model which is very costly to simulate. Given five, and then
+six, observation points from researchers that have simulated the model,
+we will use a Gaussian process model to model the unknown relation
+between $\theta$ and the score $y(\theta)$. In our chosen model we have
+a Matern type correlation function with decay parameter $\phi_M=15$,
+which means that the correlation is given as $$
+\text{Corr}[Y(\theta_1, \theta_2)] = (1+15|\theta_1-\theta_2|)\text{exp}(-15|\theta_1-\theta_2|), \quad \theta_1, \theta_2 \in [0, 1]
+$$ We will also use that $\text{E}[\text{Y}(\theta)] \equiv 0.5$ and
+that $\text{Var}[\text{Y}(\theta)]=0.5^2$ Initially the evaluation
+points are
+$\{(0.30, 0.5), (0.35, 0.32), (0.39, 0.40), (0.41, 0.35), (0.45, 0.60)\}$.
+
+**a)** We now want to use Algorithm 3 from the GP note in order to find
+the conditional mean and covariance matrix of the process, given the
+five evaluation points. We also find the 90% prediction interval for
+$\text{Y}$ by using equation $(19)$ in the GP note.
+
+```{r}
+cond_mean_covariance <- function(t_A, t_B, x_B, mu_A, mu_B, decay_param, var) {
+  #Building distance matrices
+  onesA = rep(1, length(t_A))
+  onesB = rep(1, length(t_B))
+  H_A = abs(t_A %*% t(onesA) - onesA %*% t(t_A))
+  H_B = abs(t_B %*% t(onesB) - onesB %*% t(t_B))
+  H_AB = abs(t_A %*% t(onesB) - onesA %*% t(t_B))
+  
+  #Building covariance matrices
+  Sigma_A = var*(1+decay_param*H_A)*exp(-decay_param*H_A)
+  Sigma_B = var*(1+decay_param*H_B)*exp(-decay_param*H_B)
+  Sigma_AB = var*(1+decay_param*H_AB)*exp(-decay_param*H_AB)
+  
+  #Computing conditional mean and covariance
+  mu_C = mu_A + Sigma_AB %*% solve(Sigma_B) %*% as.matrix((x_B-mu_B))
+  Sigma_C = Sigma_A - Sigma_AB %*% solve(Sigma_B) %*% t(Sigma_AB)
+  
+  results = list(mu_C, Sigma_C)
+  return(results)
+}
+
+n = 51
+theta_A = seq(0.25, 0.5, length=n)
+theta_B = c(0.30, 0.35, 0.39, 0.41, 0.45)
+Y_B = c(0.5, 0.32, 0.4, 0.35, 0.6)
+mu_A = rep(0.5, n)
+mu_B = rep(0.5, length(theta_B))
+
+decay_param = 15
+var = 0.5^2
+
+results<-cond_mean_covariance(theta_A, theta_B, Y_B, mu_A, mu_B, decay_param, var)
+
+mu_C <- results[[1]]
+Sigma_C <- results[[2]]
+
+PI_plus = mu_C + 1.64*sqrt(diag(Sigma_C))
+PI_minus = mu_C - 1.64*sqrt(diag(Sigma_C))
+
+df_cond <- data.frame(theta_A, mu_C, PI_plus, PI_minus)
+df_points <- data.frame(theta_B, Y_B)
+
+simGauss <- function(mu, Sigma) {
+  L = t(chol(Sigma))
+  z = rnorm(length(mu))
+  x = mu + L %*% z
+  return(x)
+}
+
+Y1 <- simGauss(mu_C, Sigma_C+diag(length(mu_C))*1e-8)
+Y2 <- simGauss(mu_C, Sigma_C+diag(length(mu_C))*1e-8)
+
+ggplot(df_cond, aes(theta_A)) +
+  geom_ribbon(aes(ymin = PI_minus, ymax = PI_plus, col="PI"), fill="maroon", alpha = 0.3)+
+  geom_line(aes(y=mu_C, col = "Mean")) + 
+  geom_point(data=df_points, aes(x=theta_B, y=Y_B, col = "Data points")) +
+  geom_line(aes(y=Y1, col = "realizations"))+
+  geom_line(aes(y=Y2, col = "realizations"))+
+  labs(title = "Conditional mean, its 90% prediction interval and realizations", x="theta", col = "", y = "y") + theme_hc() + scale_colour_hc("darkunica")
+```
+
+From the figure above, we see that all plots coincide in our data
+points, as they also should since the simulation is conditioned on these
+values. We have also tried to simulate the process, using algorithm 2
+from the GP note. Here we ran into a problem with the Cholesky
+factorization of the covariance matrix, but we were able to work our way
+around it by adding $10^{-8}$ to all elements on the diagonal. We have
+also seen that this has been done in code that has been presented in
+lectures, but we are still unsure as to why exactly this must be done;
+is it only due to numerical inaccuracies or is there something inherent in our
+method that always makes this necessary to do?
+
+**b)**
+
+Since the scientists' simulation is so time-costly, they might want to
+make an informed choice when choosing which $\theta$s to test for. Since
+the scientists' goal is to find a $\theta$ such that $y(\theta) < 0.30$,
+we can consider the conditional probability that $Y(\theta)<0.30$ given
+our data. A plot for this probability as a function of $\theta$ is
+presented below.
+
+```{r}
+probabilities = pnorm((0.30-mu_C)/sqrt(diag(Sigma_C)))
+
+df_prob <- data.frame(theta_A, probabilities)
+
+index <- which.max(probabilities)
+
+desired_theta = theta_A[index]
+
+ggplot(df_prob, aes(theta_A,probabilities)) +geom_line() + labs(x = "theta", title = "Probabilities of simulation values being beneath 0.30") + theme_hc() + scale_colour_hc("darkunica")
+```
+
+From the plot above we see that $\theta =$ `r desired_theta` yields the
+greatest probability of our desired result.
+
+**c)** Now the scientists have checked $\theta =0.33$, which gave the
+result $y=0.40$. We now want to expand our data set to contain this
+new value, and then follow the same procedure in order to determine the
+next value of $\theta$ that should be evaluated. First we present a
+similar plot to the one presented in 2a).
+
+```{r}
+theta_B = c(0.30, 0.33, 0.35, 0.39, 0.41, 0.45)
+Y_B = c(0.5, 0.4, 0.32, 0.4, 0.35, 0.6)
+mu_B = rep(0.5, length(theta_B))
+
+results<-cond_mean_covariance(theta_A, theta_B, Y_B, mu_A, mu_B, decay_param, var)
+
+mu_C <- results[[1]]
+Sigma_C <- results[[2]]
+Sigma_C[Sigma_C <1e-15] = 0
+
+PI_plus = mu_C + 1.64*sqrt(diag(Sigma_C))
+PI_minus = mu_C - 1.64*sqrt(diag(Sigma_C))
+
+df_cond <- data.frame(theta_A, mu_C, PI_plus, PI_minus)
+df_points <- data.frame(theta_B, Y_B)
+
+ggplot(df_cond, aes(theta_A)) +
+  geom_ribbon(aes(ymin = PI_minus, ymax = PI_plus, col="PI"), fill="maroon", alpha = 0.3) +
+  geom_line(aes(y=mu_C, col = "Mean")) + 
+  geom_point(data=df_points, aes(x=theta_B, y=Y_B, col = "Data points")) +
+  labs(title = "Conditional mean, its 90% prediction interval and realizations", x="theta", col = "", y = "y") +
+  theme_hc() + scale_colour_hc("darkunica")
+```
+
+Here we see the same general trends as we did for our five datapoints.
+Now we want to determine which $\theta$s are most likely to yield our
+desired result, and present a plot that determines this below.
+
+```{r}
+probabilities = pnorm((0.30-mu_C)/sqrt(diag(Sigma_C)))
+
+index <- which.max(probabilities)
+
+desired_theta = theta_A[index]
+
+df_prob <- data.frame(theta_A, probabilities)
+
+ggplot(df_prob, aes(theta_A)) +
+  geom_line(aes(y=probabilities)) + labs(x = "theta", title = "Probabilities of simulation values being beneath 0.30") + theme_hc() + scale_colour_hc("darkunica")
+```
+
+From the plot above we see that $\theta =$ `r desired_theta` is the most
+probable alternative that gives our wanted result. We would therefore
+advise the scientists to choose exactly this value as input for their
+next simulation.
+
+# Problem 3
+
+In this problem we will act as Per Ivar's stock advisors in his purchase
+of GameStop shares. Here we assume that the share prices,$\text{Y(t)}$,
+follow geometric Brownian motion, with $$
+\text{Y(t)} = \text{exp}\{\mu+\sigma B(t)\} \quad t\geq 0
+$$ Where $\text{B(t)}$ is standard Brownian motion with unit variance,
+and $\sigma >0$ is a scale parameter.We also have the following initial
+conditions $\text{B}(0)=0, \text{Y}(0)=e^{\mu}, \mu=\text{log}(50)$ and
+$\sigma^2=4$.
+
+Per Ivar has also instructed us that he will only sell his shares if the
+price of the stock rises to $75,-$, or in the unfortunate case that it
+decreases to $25,-$.
+
+**a)** Our first task as advisors is to provide Per Ivar with the
+probability that he will profit from selling the shares. This is
+equivalent to finding the probability that the price of the stock
+reaches $75,-$ before it reaches $25,-$. If we then rewrite our
+stochastic variable such that we could instead consider an expression
+for $X(t)=\sigma B(t)$, we then get that $$
+X(t) = \text{ln}{Y(t)}-\mu
+$$ Now, we could translate our problem into one that is very similar to
+the problem described in the project text. Because now we are interested
+in $$
+P(Y(\tau_{25,75}^*)=75 | Y(0)=50)
+$$ Where $\tau_{25, 75}=\text{min}\{t\geq 0 : Y(t) \in \{25, 75\}$. We
+can translate these hitting times to hitting times in $X$, and we then
+get
+
+$$
+X(T_{25})=\ln(25)-\ln(50) = -\ln2 \qquad X(T_{75})=\ln(75)-\ln(50)=\ln\frac{3}{2}
+$$ We then have $$
+\tau_{\ln3/2, \ln2}=\text{min}\left\{t\geq 0 : Y(t) \in \left\{-\ln2, \ln\frac{3}{2}\right\}\right\}
+$$ We also know that $$
+P(X(\tau_{a, b})=a  | X(0)=0)=\frac{b}{a+b}
+$$
+
+which yields $$
+\underline{P(Y(\tau_{25,75}^*)=75 | Y(0)=50)}=P\left(X(\tau_{-\ln2, \ln3/2})=\ln\frac{3}{2} \bigg| X(0)=0\right)
+$$ $$
+=\frac{\ln2}{\ln3/2 + \ln2}\approx \underline{0.631}
+$$
+
+**b)** Now we can calculate the expected time until Per Ivar will have
+to sell his shares. From the project text we know that the expected time
+to reach threshold $a$ or $b$ is given as $$
+E[\tau_{a, b}] = \frac{ab}{\sigma^2} \quad \implies \quad \underline{E} = \frac{\ln 2 \ln\frac{3}{2}}{4}\approx \underline{0.070}
+$$ Now we also want to simulate this, and see if we can get results that
+are close to this theoretical calculation. Beneath we present a plot of
+10 realizations of the process, which terminate when the stock price
+reaches a threshold.
+
+```{r}
+simBrownian <- function(x0, sigma, timestep, HT_val_min, HT_val_max) {
+  X <- c(x0)
+  t <- c(0)
+  
+  i=2
+  while (HT_val_min < tail(X,1) & tail(X,1) < HT_val_max) {
+    t <- c(t, tail(t,1)+timestep)
+    zi <- rnorm(1)
+    tvals <- tail(t, 2)
+    xi <- tail(X,1) + sqrt(tvals[2]-tvals[1])*sigma*zi
+    X <- c(X, xi)
+    i = i+1
+  }
+  vars = list(t,X)
+  return(vars)
+}
+
+x0 <- 0
+sigma <- 2
+timestep <- 1e-5
+HT_val_min <- -log(2)
+HT_val_max <- log(3/2)
+mu <- log(50)
+
+B = 10
+HTs = vector("numeric", B)
+num_profit = 0
+for (b in 1:B) {
+  vars <- simBrownian(x0, sigma, timestep, HT_val_min, HT_val_max)
+  t <- vars[[1]]
+  X <- vars[[2]]
+  Y <- exp(mu + X)
+  
+  df_Y_sim = data.frame(t,Y)
+  
+  if (b==1) {
+    plot <- ggplot(df_Y_sim)
+  }
+  plot = plot + 
+    geom_line(data=df_Y_sim, aes(t,Y)) +
+    annotate("point", x=tail(t,1) ,y=tail(Y,1), col = "red")
+  
+  HTs[b] = tail(t,1)
+  if (tail(Y,1)>=75) {
+    num_profit = num_profit + 1
+  }
+}
+
+plot = plot + 
+  geom_hline(yintercept=25, linetype = "dashed", color = "blue") + 
+  geom_hline(yintercept=75, linetype = "dashed", color = "green") +
+  labs(x = "time [days]", y="y(t) [kr]", title = "10 realizations of Y") +
+  theme_hc() + scale_colour_hc("darkunica")
+
+plot
+
+E_HT = mean(HTs)
+prob_profit = num_profit/B
+
+```
+
+Here we see that in some simulations there can be rather great
+fluctuations, in price, but that the majority of the cases end up in a
+profitable sale. We have also estimated the following quantities
+
+```{=tex}
+\begin{table}[h!]
+\centering
+\begin{tabular}{|c|c|c|} 
+\hline
+& Simulated & Analytic \\
+\hline
+Expected hitting time & `r E_HT` & 0.070 \\
+\hline
+Probability of profit & `r prob_profit` & 0.631\\
+\hline
+
+\end{tabular}
+\end{table}
+```
+Here we see that the expected hitting time and the probability of profit is approximated quite well by
+our simulations, but that there is some deviation from the theoretical values. This could be because we have not simulated for a
+very large number of realizations, but only ten.
+
+**c)** As our last task as Per Ivar's dutiful advisors, we wish to
+simulate the expected time that Per Ivar owned the shares before selling
+them with a profit. That is, we want to find 
+$$
+E\left[\tau_{\ln3/2, \ln2} \bigg| X(\tau_{\ln3/2, \ln2}) = \ln \frac{3}{2}\right]
+$$
+
+We have only done this by simulating 100
+realizations of the process, because of time limitations.
+
+```{r}
+B <-100
+profit_times = c()
+for(b in 1:B) {
+  vars <- simBrownian(x0, sigma, timestep, HT_val_min, HT_val_max)
+  #only interested in the last value of t and Y:
+  t_end <- tail(vars[[1]],1)
+  X_end <- tail(vars[[2]],1)
+  Y_end <- exp(mu + X_end)
+  if (Y_end>=75) {
+    profit_times <- c(profit_times, t_end)
+  }
+}
+
+E_HT_profit = mean(profit_times)
+```
+
+From the simulations we have found that the expected hitting time, given
+that we have profit is 
+
+$E\left[\tau_{\ln3/2, \ln2} \bigg| X(\tau_{\ln3/2, \ln2}) = \ln \frac{3}{2}\right] =$ `r E_HT_profit`.
+
+We can also find the expected time by solving an integral. We let
+$T_{a}$ denote the first time that $X(t)=a$, and similarly we let $T_b$ be the first time that $X(t)=-b$. We can then find
+$$
+S(t)=P(T_a \geq t | T_b > t)
+$$
+and integrate this to find the expected value.
+
+We look at
+$$
+P(T_a \leq t | T_b > t) =  \frac{P(X(\tau_{a,b})=a)}{P(T_b > t)}
+$$
+$$
+=\frac{b}{a+b}\frac{1}{P(T_b > t)}
+$$
+From the GP note, we have 
+$$
+P(T_a > t) = 1-2(1-\Phi(b/\sqrt{t \sigma^2}))
+$$
+We then get 
+
+$$
+E\left[\tau_{\ln3/2, \ln2} \bigg| X(\tau_{\ln3/2, \ln2}) = \ln \frac{3}{2}\right] = \int_0^\infty \left(1- \frac{\ln 2}{\ln3/2+\ln 2}\frac{1}{1-2(1-\Phi( \ln 2/(2\sqrt{t}))}\right) dt
+$$
+However, computing this in R, we get a value that tends to infinity, so this is not correct.
+
+```{r}
+S <- function(t){
+  vals <- 1-log(2)/(log(3/2)+log(2))*1/(1-2*(1-pnorm(log(2)/(2*sqrt(t)))))
+  return(vals)
+}
+
+#E_HT_profit2 <- integrate(S, 0, Inf)$value
+E_HT_profit2 <- NA
+```
+
+$E\left[\tau_{\ln3/2, \ln2} \bigg| X(\tau_{\ln3/2, \ln2})=\ln\frac{3}{2}\right]=$ `r E_HT_profit2`
