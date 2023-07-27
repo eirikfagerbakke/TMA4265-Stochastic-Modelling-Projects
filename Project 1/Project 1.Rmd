@@ -1,0 +1,587 @@
+---
+title: "Project 1 TMA4265"
+author: "Eirik Fagerbakke and Henrik Grenersen"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+set.seed(5)
+```
+
+# Problem 1
+
+### a)
+
+An outbreak of measles can be modeled as a Markov Chain.
+
+The reason why it can be modeled as a Markov chain, is because it follows the Markov property, which entails that the probabilities of the current step are only affected by the previous step. A person who has been susceptible for 10 days is for instance just as likely to be infected as a person who has been susceptible for just 1 day.
+
+We can model the Markov chain with the following probability matrix:
+
+$$
+P=
+\begin{bmatrix}
+1-\beta & \beta & 0 \\
+0 & 1-\gamma & \gamma \\
+\alpha & 0 & 1-\alpha
+\end{bmatrix}
+$$
+It is impossible to go from susceptible to recovered (you need to get infected first), from infected to susceptible (you need to be recovered first), and from recovered to infected (you need to be susceptible first). These probabilities are therefore all 0.
+
+The probability of going from recovered to susceptible is $\alpha$, the probability of going from susceptible to infected is $\beta$, and the probability of going from infected to recovered is $\gamma$.
+
+The rest of the probabilities are found by the fact that each row needs to sum to 1.
+
+### b)
+
+```{r, echo=FALSE}
+alpha = 0.005
+beta = 0.01
+gamma = 0.10
+```
+
+
+With $\alpha = `r alpha`$, $\beta = `r beta`$ and $\gamma = `r gamma`$, we get 
+
+
+$$
+P=
+\begin{bmatrix}
+`r 1- beta` & `r beta` & 0 \\
+0 & `r 1-gamma` & `r gamma` \\
+`r alpha` & 0 & `r 1-alpha`
+\end{bmatrix}
+$$
+To show that the chain actually has a limiting distribution, we can determine if it is regular. If so, it also has such a distribution. To determine this, we first consider $P^2$
+
+$$
+P^2=
+\begin{bmatrix}
+0.09 & 0.01 & 0 \\
+0 & 0.90 & 0.10 \\
+0.005 & 0 & 0.995
+\end{bmatrix}
+\begin{bmatrix}
+0.09 & 0.01 & 0 \\
+0 & 0.90 & 0.10 \\
+0.005 & 0 & 0.995
+\end{bmatrix}
+=
+\begin{bmatrix}
+0.0081 & 0.0099 & 0.001 \\
+0.0005 & 0.81 & 0.1895 \\
+0.005425 & 0.00005 & 0.990025
+\end{bmatrix}
+$$
+Since all the elements are larger than 0, $P$ is regular and a limiting distribution exists.
+
+Now, we are interested in finding the limiting distribution, as it can be used to calculate the long-run mean number of days spent in each state. To find the limiting distribution, we solve
+$$
+\pi_0 = 0.99 \pi_0 + 0.005 \pi_2
+$$
+$$
+\pi_2 = 0.1 \pi_1 + 0.995 \pi_2\\
+$$
+
+$$
+\pi_0 + \pi_1 + \pi_2 = 1
+$$
+Solving the first equation for $\pi_0:$
+$$
+\pi_0 = \frac{0.005}{0.01} \pi_2\\
+$$
+Solving the second equation for $\pi_1:$
+$$
+\pi_1 = \frac{0.005}{0.1} \pi_2\\
+$$
+Plugging this into the third equation:
+$$
+\frac{0.005}{0.01} \pi_2 + \frac{0.005}{0.1} \pi_2 + \pi_2 = 1 
+\quad \Rightarrow \quad
+\pi_2 = \frac{20}{31}\quad
+\pi_0 = \frac{0.005}{0.01} \frac{20}{31} = \frac{10}{31}\quad
+\pi_1 = \frac{0.005}{0.1} \frac{20}{31} = \frac{1}{31}
+$$
+```{r, echo=FALSE}
+pi0 = 10/31
+pi1 = 1/31
+pi2 = 20/31
+```
+Using the limiting distribution, we can determine the mean number of days spent being in the different states for an individual. This relation is given by $365\pi_i$. We then get that the mean number of days spent being susceptible in a year is `r format(pi0*365, digits = 4)` days, being infected is `r format(pi1*365, digits = 4)` and being recovered is `r format(pi2*365, digits = 4)`
+
+### c)
+
+```{r, echo = FALSE}
+N = 7300 #number of time steps, 20 years
+
+
+#probability matrix
+P = matrix(c(1-beta, beta, 0, 0, 1-gamma, gamma, alpha, 0, 1-alpha), nrow = 3, byrow=TRUE) 
+
+markovSimulation <- function(N, P) {
+  #vector to be filled with realization of simulation
+  x = vector('numeric', length = N+1)
+  
+  #we start in a susceptible state
+  x[1] = 0
+  
+  for (n in 1:N) {
+    x[n+1] = sample.int(3, 1, replace=TRUE, prob = P[x[n]+1,])-1 
+    #adding and subtracting 1 because R is 1-indexed, but we use the state space {0,1,2}
+  }
+  
+  
+  indices <- sequence(N/2,N/2+2) #Sequence used to help us only get the results of
+  #the last half of the time steps
+  
+  susceptibleDays = sum(x[indices]==0)/10
+  
+  infectedDays = sum(x[indices]==1)/10
+  
+  recoveredDays = sum(x[indices]==2)/10
+  
+  returnedList <- list("1" = susceptibleDays, "2"=infectedDays, "3"=recoveredDays)
+  
+  return(returnedList)
+}
+
+output <- markovSimulation(N, P)
+susceptibleDays <- output$"1"
+infectedDays <- output$"2"
+recoveredDays <- output$"3"
+```
+
+From the simulation, we obtain that in a year, we spend `r susceptibleDays` days being susceptible, `r infectedDays` days being infected and `r recoveredDays` being recovered. This is very similar to the results obtained in b).
+
+```{r, echo=FALSE}
+B = 30 #number of simulations we want to run
+
+susceptibleVec = vector('numeric', length = B)
+infectedVec = vector('numeric', length = B)
+recoveredVec = vector('numeric', length = B)
+
+
+for (b in 1:B) {
+  output <- markovSimulation(N, P)
+  susceptibleDays <- output$"1"
+  infectedDays <- output$"2"
+  recoveredDays <- output$"3"
+  
+  susceptibleVec[b]=susceptibleDays
+  
+  infectedVec[b] = infectedDays
+  
+  recoveredVec[b] = recoveredDays
+}
+```
+To calculate the confidence interval, we need to look at the student T-distribution, as we do not know the actual mean and standard deviation. We instead need to calculate estimates for these based on the simulations. To do this, we have used t.test():
+
+```{r}
+susceptibleConfInt <- t.test(susceptibleVec, conf.level = 0.95)$conf.int
+infectedConfInt <- t.test(infectedVec, conf.level = 0.95)$conf.int
+recoveredConfInt <- t.test(recoveredVec, conf.level = 0.95)$conf.int
+```
+
+\begin{table}[h!]
+\begin{tabular}{ |c|c|c|c| } 
+\hline
+ & Lower bound & Upper bound & Theoretical value\\
+\hline
+\text{Number of susceptible days in a year} & `r format(susceptibleConfInt[1], digits=4)`& `r format(susceptibleConfInt[2], digits=4)` & `r format(pi0*365, digits = 4)`\\
+\text{Number of infected days in a year} & `r format(infectedConfInt[1], digits=4)` & `r format(infectedConfInt[2], digits=4)` & `r format(pi1*365, digits = 4)` \\ 
+\text{Number of recovered days in a year} &  `r format(recoveredConfInt[1], digits=4)`  & `r format(recoveredConfInt[2], digits=4)`  & `r format(pi2*365, digits = 4)`\\ 
+\hline
+
+\end{tabular}
+\end{table}
+
+We see that these results are compatible with our results in b), as the theoretical values lie in all the confidence intervals. In a 95 % confidence interval, there is a 95 % chance that the theoretical values is contained in each interval in each simulation. 
+
+### d)
+
+Since $\beta$ changes with each time step, the probabilities are no longer stationary, but the processes might still be Markov if they fulfill the Markov property. Since $\alpha$ and $\gamma$ are constant, we only need to calculate the value of $\beta$ for the current time step, which is given by $\beta_n = \frac{I_n}{2 N}$.
+
+The process $I_n$, where we only know the number of infected individuals, is not a Markov process. Since we only know the number of infected individuals, we could look at the values of $I_n$ in previous time steps, as we could use this to give an estimate of the number of susceptible and recovering individuals. By using information from multiple previous time steps, the process no longer fulfills the Markov property. 
+
+When adding $S_n$, we also effectively know the number of recovered individuals, as we know the population size. $Z_n$ is therefore a Markov chain, as we only need to know the values of $Z_n$ in the current time step to find probabilities for the next step. Adding the number of recovered individuals, $R_n$, does not cancel out the Markov property either, and therefore $Y_n$ is also a Markov process.
+
+Further, we can model each step as a binomial distribution. If we want to calculate $S_n$, we need to look at $S_{n-1}$ and $R_{n-1}$, as these individuals could become susceptible again in the current step. We then have a binomial distribution with $S_{n-1}$ individuals and a probability $1-\beta$ for becoming susceptible, and a binomial distribution with $R_{n-1}$ individuals and a probability $\alpha$ for becoming susceptible. $S_n$ will then be the sum of "successes".
+
+
+### e)
+
+```{r, echo = FALSE, fig.dim=c(6, 4)}
+#install.packages("ggplot2")
+library(ggplot2)
+
+n <- 300 #Number of time steps
+
+alpha <- 0.005 #Constant throughout the simulation
+gamma <- 0.1
+
+N <- 1000 # Population size
+
+simulateY <- function(Y0, N, n, numOfVaccinated = 0) {
+  Ys <- matrix(0, nrow = n+1, ncol = 3)
+  Ys[1,] = Y0
+  for (i in 2:(n+1)) {
+      oldSusceptible <- Ys[i-1,1]
+      oldInfected <- Ys[i-1, 2]
+      oldRecovered <- Ys[i-1,3]
+      
+      beta <- oldInfected/(2*N)
+      
+      newSusceptible <- rbinom(1, oldSusceptible, 1-beta) #Susceptible->Susceptible
+      newInfected <- oldSusceptible-newSusceptible #Susceptible->Infected
+      
+      newSusceptible = newSusceptible + rbinom(1, oldRecovered, alpha) #Adds the 
+      #individuals that go from being recovered to being susceptible
+      
+      newInfected <- newInfected + rbinom(1, oldInfected, 1-gamma) #Adds the 
+      #individuals that stay infected
+      newRecovered <- N - numOfVaccinated- newSusceptible - newInfected #The remaining number of 
+      #individuals must be in the recovered state
+      
+      Ys[i, ] = c(newSusceptible, newInfected, newRecovered)
+  }
+  return(Ys)
+}
+Y0<-c(950, 50, 0)
+
+Ys <- simulateY(Y0, N, n)
+  
+Ys_df <-as.data.frame(Ys)
+Ys_df = cbind(c(1:(n+1)), Ys_df)
+colnames(Ys_df) <- c("timestep", "S", "I", "R")
+colors <- c("S" = "blue", "I" = "red", "R" = "green")
+
+ggplot(Ys_df, aes(x=timestep)) +
+  geom_point(aes(y = S, colour="S"), size=1) +
+  geom_point(aes(y = I, colour="I"), size=1) +
+  geom_point(aes(y = R, colour="R"), size=1) +
+  ggtitle("Simulation of SIR model in population with N=1000")+
+  labs(x = "Time step", y = "Number of individuals", colour="States")+
+  scale_color_manual(values = colors)
+```
+We see that for the time steps 0-50, we have a drastic increase in the number of infected people, and with this a drastic decrease in the number of susceptible people. When the number of infected people reaches its peak, the probability to become infected is also at its peak, but the number of susceptible individuals is so low that the number of infected individuals has to decrease.
+
+We also see a sharp increase in the number of recovered individuals, as there are a lot of infected people who can become recovered. The probability that one stays recovered is very high (0.995), and for the time steps 50-300 we therefore see a stabilization.
+
+### f)
+
+```{r, echo=FALSE}
+n <- 300 #Number of time steps
+
+alpha <- 0.005 #Constant throughout the simulation
+gamma <- 0.1
+
+N <- 1000 # Population size
+B <- 1000 # Number of simulations
+
+max_infected <- vector("numeric", length = B)
+timestep_max_infected <- vector("numeric", length = B)
+
+for (b in 1:B) {
+  Y0<-c(950, 50, 0)
+
+  Ys <- simulateY(Y0, N, n)
+  
+  #adds the maximum number of infected individuals and the corresponding time step
+  max_infected[b] = max(Ys[,2])
+  timestep_max_infected[b] = which(Ys[,2]==max_infected[b])[1]
+  
+}
+
+E_max_infected <- mean(max_infected)
+E_timestep_max_infected <- mean(timestep_max_infected)
+
+max_infected_CI <- t.test(max_infected, conf.level = 0.95)$conf.int
+timestep_max_infected_CI <- t.test(timestep_max_infected, conf.level = 0.95)$conf.int
+```
+The computed confidence intervals for the maximum number of infected individuals and the corresponding time steps are computed below
+
+\begin{table}[h!]
+\begin{tabular}{ |c|c|c|c| } 
+\hline
+ & Lower bound & Upper bound & Expected value\\
+\hline
+max $\{I_n\}$ & `r format(max_infected_CI[1], digits=4)`& `r format(max_infected_CI[2], digits=4)` & `r format(E_max_infected, digits = 4)`\\
+Time step & `r format(timestep_max_infected_CI[1], digits=4)` & `r format(timestep_max_infected_CI[2], digits=4)` & `r format(E_timestep_max_infected, digits = 4)` \\ 
+\hline
+
+\end{tabular}
+\end{table}
+
+We see that the maximum number of individuals is reached very quickly, and that this is consistent with all the simulations, as the confidence interval is small. This maximum number is also rather high, as more than half of the population would have been infected at the same time, which could be very severe.
+
+
+### g)
+
+We now want to see how a vaccination program could affect the outbreak. We will look at four different scenarios: 0, 100, 600 and 800 vaccinated individuals. We will assume that the individuals become immune after vaccination, and that they no longer will be able to pass on the disease. At the same time, we have chosen to use the whole population size for the probability of becoming infected $\beta_n = \frac{I_n}{2N}$. This makes sense if we assume that the vaccinations are distributed equally throughout the population. This would then mean that if we had a population of size 1000, with 998 vaccinated individuals, where one is infected and one is susceptible, the probability of becoming infected in the next time step would not be $\frac{1}{4}$, but rather $\frac{1}{2000}$.
+
+
+```{r, echo = FALSE, fig.dim=c(6, 4)}
+n <- 300 #Number of time steps
+
+alpha <- 0.005 #Constant throughout the simulation
+gamma <- 0.1
+
+N <- 1000 # Population size
+B <- 1000 # Number of simulations
+
+num_vaccinated <- c(0, 100, 600, 800)
+
+R <- length(num_vaccinated) #Number of realizations
+Is <- matrix(nrow=n+1, ncol=R)
+
+E_max_infected <- vector("numeric", length = R)
+E_timestep_max_infected <- vector("numeric", length = R)
+
+max_infected_CI <- matrix(nrow=R, ncol=2)
+timestep_max_infected_CI <- matrix(nrow=R, ncol=2)
+
+for (v in 1:R) {
+  max_infected <- vector("numeric", length = B)
+  timestep_max_infected <- vector("numeric", length = B)
+  
+  for (b in 1:B) {
+  
+    Y0<-c(950-num_vaccinated[v], 50, 0)
+    Ys <- simulateY(Y0, N, n, num_vaccinated[v])
+    
+    #adds the maximum number of infected individuals and the corresponding time step
+    max_infected[b] = max(Ys[,2])
+    timestep_max_infected[b] = which(Ys[,2]==max_infected[b])[1]
+    
+  }
+  
+  Is[,v] <- Ys[,2]
+
+E_max_infected[v] <- mean(max_infected)
+E_timestep_max_infected[v] <- mean(timestep_max_infected)
+
+max_infected_CI[v,] <- t.test(max_infected, conf.level = 0.95)$conf.int
+timestep_max_infected_CI[v,] <- t.test(timestep_max_infected, conf.level = 0.95)$conf.int
+}
+
+Is_df <-as.data.frame(Is)
+Is_df = cbind(c(1:(n+1)), Is_df)
+colnames(Is_df)[1] = "timestep"
+
+for (i in 2:(R+1)) {
+  colnames(Is_df)[i] = paste("vaccinations", toString(num_vaccinated[i-1]), sep="")
+}
+
+colors <- c("0" = "blue", "100" = "red", "600" = "green", "800" = "orange")
+
+ggplot(Is_df, aes(x=timestep)) +
+  geom_point(aes(y = vaccinations0, colour = "0"), size=1) +
+  geom_point(aes(y = vaccinations100, colour = "100"), size=1)+
+  geom_point(aes(y = vaccinations600, colour = "600"), size=1)+
+  geom_point(aes(y = vaccinations800, colour = "800"), size=1)+
+  ggtitle("Simulation of SIR model with vaccination")+
+  labs(x = "Time step", y = "Number of infected individuals", 
+  colour="# vaccinations")+
+  scale_color_manual(values = colors)
+
+
+```
+
+\begin{table}[h!]
+\begin{tabular}{ |c|c|c|c|c| } 
+\hline
+& & Lower bound & Upper bound & Expected value\\
+\hline
+0 Vaccinations & max $\{I_n\}$ & `r format(max_infected_CI[1,1], digits=4)`& `r format(max_infected_CI[1,2], digits=4)` & `r format(E_max_infected[1], digits = 4)`\\
+& Time step & `r format(timestep_max_infected_CI[1,1], digits=4)` & `r format(timestep_max_infected_CI[1,2], digits=4)` & `r format(E_timestep_max_infected[1], digits = 4)` \\
+\hline
+100 Vaccinations & max $\{I_n\}$ & `r format(max_infected_CI[2,1], digits=4)`& `r format(max_infected_CI[2,2], digits=4)` & `r format(E_max_infected[2], digits = 4)`\\
+& Time step & `r format(timestep_max_infected_CI[2, 1], digits=4)` & `r format(timestep_max_infected_CI[2,2], digits=4)` & `r format(E_timestep_max_infected[2], digits = 4)` \\
+\hline
+600 Vaccinations & max $\{I_n\}$ & `r format(max_infected_CI[3, 1], digits=4)`& `r format(max_infected_CI[3, 2], digits=4)` & `r format(E_max_infected[3], digits = 4)`\\
+& Time step & `r format(timestep_max_infected_CI[3, 1], digits=4)` & `r format(timestep_max_infected_CI[3, 2], digits=4)` & `r format(E_timestep_max_infected[3], digits = 4)` \\
+\hline
+800 Vaccinations & max $\{I_n\}$ & `r format(max_infected_CI[4,1], digits=4)`& `r format(max_infected_CI[4,2], digits=4)` & `r format(E_max_infected[4], digits = 4)`\\
+& Time step & `r format(timestep_max_infected_CI[4,1], digits=4)` & `r format(timestep_max_infected_CI[4,2], digits=4)` & `r format(E_timestep_max_infected[4], digits = 4)` \\
+\hline
+
+\end{tabular}
+\end{table}
+
+
+## Problem 2
+
+### a)
+
+The probability of getting more than 100 claims in 59 days, is
+$$
+\text{Pr}\{X(59)>100\}=\text{Pr}\{X(59)-X(0)>100\} = 1-\text{Pr}\{X(59)-X(0)\leq100\}
+$$
+Since the interval has length $59$, we need to calculate the cumulative distribution of a poisson process with rate $\lambda t = 1.5 \cdot 59 = 88.5$ with $x=100$
+
+$$
+1-\text{Pr}\{X(59)-X(0)\leq100\} =  1-\sum_{i=0}^{100} \text{Pr}\{X(59)-X(0)=i\} = 1 - \sum_{i=0}^{100} \frac{88.5^i}{i!} e^{-88.5}
+$$
+Calculating this in R, we obtain
+
+\begin{center}
+Pr\{X(59)>100\} =  `r format(1-ppois(100, 1.5*59),digits = 5)`
+\end{center}
+Now we want to simulate this process, and present $10$ of these realizations in the plot below.
+
+```{r, echo = FALSE, fig.dim=c(6, 4)}
+
+simulatePoisson <- function(N, numOfDays, lambda) {
+  realizations <- matrix(nrow=numOfDays+1, ncol = N)
+  
+  for (i in 1:N) {
+    
+    totalClaims <- vector("numeric", length = numOfDays+1)
+    totalClaims[1] <- 0 # X(0) = 0
+    totalClaims[2:(numOfDays+1)] = rpois(numOfDays, lambda)
+    
+    totalClaims = cumsum(totalClaims)
+    
+    realizations[,i]=totalClaims
+  }
+  return (realizations)
+}
+
+N<-1000
+numOfDays <- 59
+lambda <- 1.5
+results <- simulatePoisson(N, numOfDays, lambda)
+last_row <- dim(results)[1]
+estimated_probability = sum(results[last_row,]>100)/N
+
+results_data_frame <- as.data.frame(results[, 1:10])
+
+names = colnames(results_data_frame)
+
+x=c(1:60)
+colors = rainbow(10)
+
+plot(NULL, NULL, xlim = c(0, 60), ylim = c(0, 105), xlab = "Days", ylab = "# claims", main = "10 different realizations of the number of claims", lwd = 0.4)
+for (i in 2:60) {
+  for (j in 1:10) {
+    lines(c(x[i-1], x[i]), c(results[i-1,j], results[i-1, j]), lwd=2, col = colors[j])
+  }
+}
+
+```
+
+Now we have estimated the probability to be `r format(estimated_probability, digits = 5)` from our `r N` simulations. This is not far from the theoretical value we calculated earlier, with an absolute difference of only `r format(abs(1-ppois(100, 1.5*59)-estimated_probability), digits = 5)`
+
+### b)
+
+We will now look into the sum of the claim amounts reached in $t=59$ days. That is $Z(t)=\sum_{i=1}^{X(t)} C_i$ with $C_i \sim \text{Exp}(\gamma)$ in mill. kr and $\gamma = 10$.  
+
+```{r, echo = FALSE, fig.dim=c(6, 4)}
+SimulateAmountsOfClaims<- function(N, numOfDays, lambda, gamma) {
+  realizations <- matrix(0, nrow=numOfDays+1, ncol = N)
+  for (row in 2:numOfDays +1) {
+    for (col in 1:N) {
+      num_of_claims_per_day <- rpois(1, lambda)
+      daily_total_claim <- sum(rexp(num_of_claims_per_day, gamma)) 
+      realizations[row, col] <- daily_total_claim + realizations[row-1, col]
+    }
+  }
+  return(realizations)
+}
+
+N <- 1000
+numOfDays = 59
+lambda <- 1.5
+gamma <- 10
+
+results <- SimulateAmountsOfClaims(N, numOfDays, lambda, gamma)
+
+last_row <- dim(results)[1]
+estimated_probability = sum(results[last_row,]>8)/N
+
+results_data_frame <- as.data.frame(results[, 1:10])
+
+names = colnames(results_data_frame)
+
+x=c(1:60)
+colors = rainbow(10)
+
+y_max_lim <- ceiling(max(results_data_frame[last_row,]))
+
+plot(NULL, NULL, xlim = c(0, 60),ylim = c(0, y_max_lim), xlab = "Days", ylab = "Total claim amount in mill. kr", main = "10 simulations of the total claim amount", lwd = 0.4)
+for (i in 2:60) {
+  for (j in 1:10) {
+    lines(c(x[i-1], x[i]), c(results[i-1,j], results[i-1, j]), lwd=2, col = colors[j])
+  }
+}
+
+```
+
+Here we have estimated the probability of the sum of the claim amounts exceeding 8 million kr in 59 days to be `r format(estimated_probability, digits = 5)` from `r N` simulations.
+
+### c)
+
+Now we can think about the variable $Y(t)$, which is the number of claims up to time $t$ which have exceeded $250 000$ kr. We then need to take into account the number of claims received up to time $t$, $X(t)$, which is of course Poisson distributed as earlier, with rate $\lambda t$.
+
+$$
+Y(t) = \sum_{i=1}^{X(t)}I_i
+$$
+Where each $I$ is Bernoulli-distributed, with probability $p$ of success, that is, that a specific claim exceeds $250000$ kr. Now if we fix $X(t)=x$, we could then condition our $Y(t)$ on $N$ as follows
+
+$$
+Y(t) | X(t) = x  = \begin{cases}
+0, \quad x=0 \\
+\sum _{i=1}^x I_i \quad x > 0
+\end{cases}
+$$
+Now it is clear that this variable is binomially distributed, so
+
+$$
+(Y(t) | X(t) = x) \sim \text{Binomial(x, p)}
+$$
+With marginal distribution $p(Y|x)= {x\choose y} p^x (1-x)^{x-y}$. If we now calculate the marginal distribution using the law of total probability, we get that
+
+$$
+\text{Pr}\{Y=y\} = \sum_{x=0}^\infty \text{Pr}\{Y=y , X = x\} = 0 +  \sum_{x=y}^\infty \text{Pr}\{Y=y , X = x\}\  
+$$
+$$
+= \sum_{x=0}^\infty \text{Pr}\{X = x\}\text{Pr}\{Y=y | X=x\}
+$$
+
+$$
+=\sum_{x=y}^{\infty}\frac{(\lambda t) ^x e^{-\lambda t}}{x!} {x\choose y}p^y(1-p)^{x-y}
+$$
+
+$$ 
+=\sum_{x=y}^{\infty}\frac{(\lambda t) ^x e^{-\lambda t}}{x!}\frac{x!}{y!(x-y)!}p^y(1-p)^{x-y} 
+$$
+
+$$  
+=\frac{e^{-\lambda t}p^y}{y!} (\lambda t)^y\sum_{x=y}^{\infty} \frac{(\lambda t(1-p))^{x-y}}{(x-y)!}
+$$
+
+$$
+=\frac{e^{-\lambda t}(\lambda pt)^y}{y!} \cdot e^{\lambda t(1-p)}
+$$
+
+$$
+=\frac{(\lambda p t)^y}{y!}e^{-\lambda pt}
+$$
+$$
+\implies Y(t) \sim \text{Poisson}(\lambda p t)
+$$
+Now, the final part consists of determining $p$, that is, the probability that a single claim exceeds $250000$ kr, and should therefore be examined. Remembering that each claim amount, $C_i$, is exponentially distributed, with rate $\gamma= 10$, we get that
+
+$$
+p = \text{Pr}\{C_i > 0.25\} = 1- \text{Pr}\{C_i \leq 0.25\} = 1- \int_0^{0.25}\gamma e^{-\gamma \text{c}} \text{dc} = 1+[e^{-\gamma \text{c}}]_0^ {0.25} = e^{-0.25\cdot \gamma}
+$$
+
+Which all together gives that 
+$$
+Y(t) \sim \text{Poisson}(1.5 e^{-2.5}t)  \quad \square
+$$
+
+
+
